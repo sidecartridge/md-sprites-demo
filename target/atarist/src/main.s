@@ -24,44 +24,70 @@
 ; bit 31: TTP
 
 ROM4_ADDR			equ $FA0000
-FRAMEBUFFER_ADDR	equ $FA8000
-FRAMEBUFFER_SIZE 	equ 8000	; 8Kbytes of a 320x200 monochrome screen
-COLS_HIGH			equ 20		; 16 bit columns in the ST
-ROWS_HIGH			equ 200		; 200 rows in the ST
-BYTES_ROW_HIGH		equ 80		; 80 bytes per row in the ST
-PRE_RESET_WAIT		equ $FFFFF
-TRANSTABLE			equ $FA1000	; Translation table for high resolution
-
-CMD_NOP				equ 0		; No operation command
-CMD_RESET			equ 1		; Reset command
-CMD_BOOT_GEM		equ 2		; Boot GEM command
-CMD_TERMINAL		equ 3		; Terminal command
-CMD_START 			equ 4  		; Continue boot process and emulation
+FRAMEBUFFER_A_ADDR	equ ($FB0000 - 32000)
+FRAMEBUFFER_B_ADDR	equ ($FB0000 - 64000)
+COPIED_CODE_OFFSET	equ $00010000 ; The offset should be below the screen memory
+COPIED_CODE_SIZE	equ $00005000
+PRE_RESET_WAIT		equ $0000FFFF ; Wait this many cycles before resetting the computer
+SCREEN_A_BASE_ADDR  equ $70000 ; The screen memory address for the framebuffer
+SCREEN_B_BASE_ADDR  equ $78000 ; The screen memory address for the framebuffer
+COPYCODE_A_SRCADDR  equ (ROM4_ADDR + $600) ; The address of the code to copy the framebuffer A
+COPYCODE_B_SRCADDR  equ (ROM4_ADDR + $2600) ; The address of the code to copy the framebuffer B
+COPYCODE_A_ADDR     equ (SCREEN_A_BASE_ADDR - COPIED_CODE_OFFSET + $600) ; The address of the code to copy the framebuffer A
+COPYCODE_B_ADDR     equ (SCREEN_A_BASE_ADDR - COPIED_CODE_OFFSET + $2600) ; The address of the code to copy the framebuffer B
+COPYCODE_SIZE		equ $1F48
 
 
 _conterm			equ $484	; Conterm device number
 
-; Constants needed for the commands
-RANDOM_TOKEN_ADDR:        equ (ROM4_ADDR + $F000) 	      ; Random token address at $FAF000
-RANDOM_TOKEN_SEED_ADDR:   equ (RANDOM_TOKEN_ADDR + 4) 	  ; RANDOM_TOKEN_ADDR + 4 bytes
-RANDOM_TOKEN_POST_WAIT:   equ $1        		      	  ; Wait this cycles after the random number generator is ready
-
-SHARED_VARIABLES:     	  equ (RANDOM_TOKEN_ADDR + (16 * 4)); random token + 16*4 bytes to the shared variables area
-
 ROMCMD_START_ADDR:        equ $FB0000					  ; We are going to use ROM3 address
-CMD_MAGIC_NUMBER    	  equ ($ABCD) 					  ; Magic number header to identify a command
-CMD_SET_SHARED_VAR		  equ 1							  ; This is a fake command to set the shared variables
-														  ; Used to store the system settings
-; App commands for the terminal
-APP_TERMINAL 				equ $0 ; The terminal app
+CMD_BOOSTER		    	  equ ($ABCD) 					  ; The go to Booster command
+CMD_VBLANK		    	  equ ($DCBA) 					  ; The vertical blank command
+CMD_START_DEMO		  	  equ ($E1A8) 					  ; The start demo command
 
-; App terminal commands
-APP_TERMINAL_START   		equ $0 ; Start terminal command
-APP_TERMINAL_KEYSTROKE 		equ $1 ; Keystroke command
+LISTENER_ADDR		      equ (ROM4_ADDR + $5F8)		  ; The address of the listener
+REMOTE_RESET		      equ $1					      ; The device ask to reset the
+
+_dskbufp                  equ $4c6                        ; Address of the disk buffer pointer    
+_p_cookies                equ $5a0    					  ; pointer to the system Cookie-Jar
+
+COOKIE_JAR_STE		   	  equ $00010000                   ; STE computer
+COOKIE_JAR_MEGASTE        equ $00010010                   ; Mega STE computer
+
+; Copy 32000 bytes from $00FA0300 to $00780000 with the STE blitter
+; Uses one blit: X_COUNT=640 words, Y_COUNT=25 lines, linear (Y_INC=0)
+
+BLT_BASE        		equ     $FFFF8A00
+BLT_SRC_XINC    		equ     (BLT_BASE+$20)
+BLT_SRC_YINC    		equ     (BLT_BASE+$22)
+BLT_SRC_ADDR    		equ     (BLT_BASE+$24)
+
+BLT_ENDMASK1    		equ     (BLT_BASE+$28)
+BLT_ENDMASK2    		equ     (BLT_BASE+$2A)
+BLT_ENDMASK3    		equ     (BLT_BASE+$2C)
+
+BLT_DST_XINC    		equ     (BLT_BASE+$2E)
+BLT_DST_YINC    		equ     (BLT_BASE+$30)
+BLT_DST_ADDR    		equ     (BLT_BASE+$32)
+
+BLT_XCNT        		equ     (BLT_BASE+$36)
+BLT_YCNT        		equ     (BLT_BASE+$38)
+
+BLT_HOP        			equ     (BLT_BASE+$3A)
+BLT_OP		 			equ     (BLT_BASE+$3B)
+BLT_CTRL				equ     (BLT_BASE+$3C)
+BLT_SKEW				equ     (BLT_BASE+$3D)
+
+BLT_M_LINE_BUSY         equ  %00000111        ; mask for the Blitter line busy bit
+BLT_F_LINE_BUSY         equ  %10000000        ; flag to set the Blitter line busy bit in shared (BLIT) mode
+BLT_HOG_MODE            equ  %11000000        ; flag to set the Blitter line busy bit in exclusive (HOG) mode 
+
+; Video base address
+VIDEO_BASE_ADDR_LOW     equ $ffff820d
+VIDEO_BASE_ADDR_MID     equ $ffff8203
+VIDEO_BASE_ADDR_HIGH    equ $ffff8201
 
 
-
-	include inc/sidecart_macros.s
 	include inc/tos.s
 
 ; Macros
@@ -88,19 +114,14 @@ get_screen_base		macro
 					addq.l #2,sp
 					endm
 
-; Check the left or right shift key. If pressed, exit.
-check_shift_keys	macro
-					move.w #-1, -(sp)			; Read all key status
-					move.w #$b, -(sp)			; BIOS Get shift key status
-					trap #13
-					addq.l #4,sp
-
-					btst #1,d0					; Left shift skip and boot GEM
-					bne boot_gem
-
-					btst #0,d0					; Right shift skip and boot GEM
-					bne boot_gem
-
+; XBIOS Set the screen memory address
+set_screen_base	    macro
+					move.w #-1, -(sp);  ; No change res
+					pea \1 				; Set the physical screen address
+					pea \1 				; Set the logical screen address
+					move.w #5,-(sp)		; Set the function number to 3 (set screen base)
+					trap #14			; Call XBIOS
+					lea 12(sp), sp		; Clean the stack
 					endm
 
 ; Check the keys pressed
@@ -112,33 +133,28 @@ check_keys			macro
 
 					gemdos	Cnecin,2		; Read the key pressed
 
-					cmp.b #27, d0		; Check if the key is ESC
-					beq .\@esc_key	; If it is, send terminal command
-
-					move.l d0, d3
-					send_sync APP_TERMINAL_KEYSTROKE, 4
+					cmp.b #27, d0			; Check if the key is ESC
+					bne .\@any_key
+.\@esc_key:
+					; For performance reasons, we will positive and negative index values to avoid some operations
+					move.l #(ROMCMD_START_ADDR + $8000), a0 ; Start address of the ROM3
+					; SEND HEADER WITH MAGIC NUMBER
+					move.w #CMD_BOOSTER, d7 	 ; Command 
+					tst.b (a0, d7.w)             ; Command
 
 					bra .\@no_key
-.\@esc_key:
-					send_sync APP_TERMINAL_START, 0
 
+.\@any_key:			bra boot_gem			; If any key is pressed, boot GEM
+
+					; If we are here, no key was pressed
 .\@no_key:
 
 					endm
 
 check_commands		macro
-					move.l (FRAMEBUFFER_ADDR + FRAMEBUFFER_SIZE), d6	; Store in the D6 register the remote command value
-					cmp.l #CMD_RESET, d6		; Check if the command is a reset
-					beq .reset					; If it is, reset the computer
-					cmp.l #CMD_BOOT_GEM, d6		; Check if the command is to boot GEM
-					beq boot_gem				; If it is, boot GEM
-					cmp.l #CMD_START, d6		; Check if the command is to continue booting
-					beq rom_function			; If it is, continue booting with the emulation
-
-					; If we are here, the command is a NOP
-					; If the command is a NOP, check the keys to send terminal commands
-					check_keys
-.\@bypass:
+					move.l (LISTENER_ADDR), d6	; Store in the D6 register the remote command value
+					cmp.l #REMOTE_RESET, d6		; Check if the command is a reset command
+					beq .reset
 					endm
 
 	section
@@ -156,98 +172,201 @@ first:
 	dc.w GEMDOS_TIME 				;time
 	dc.w GEMDOS_DATE 				;date
 	dc.l end_pre_auto - pre_auto
-	dc.b "TERM",0
+	dc.b "DEMO",0
     even
 
 pre_auto:
-; Get the screen memory address to display
-	get_screen_base
-	move.l d0, a6				; Save the screen memory address in A6
-
-; Enable bconin to return shift key status
-	or.b #%1000, _conterm.w
 
 ; Get the resolution of the screen
+.get_resolution:
 	get_rez
-	cmp.w #2, d0				; Check if the resolution is 640x400 (high resolution)
-	beq .print_loop_high		; If it is, print the message in high resolution
+	tst.w d0
+	bne lowres_only
 
-.print_loop_low:
+; Wait for the code to be copied to the framebuffers
+	move.l #(50 * 5), d7 	; Approx 5 seconds maximum waiting
+wait_code:
 	vsync_wait
 
-; We must move from the cartridge ROM to the screen memory to display the messages
-	move.l a6, a0				; Set the screen memory address in a0
-	move.l #FRAMEBUFFER_ADDR, a1			; Set the cartridge ROM address in a1
-	move.l #((FRAMEBUFFER_SIZE / 2) -1), d0			; Set the number of words to copy
-.copy_screen_low:
-	move.w (a1)+ , d1			; Copy a word from the cartridge ROM
-	move.w d1, d2				; Copy the word to d2
-	swap d2						; Swap the bytes
-	move.w d1, d2				; Copy the word to d2
-	move.l d2, (a0)+			; Copy the word to the screen memory
-	move.l d2, (a0)+			; Copy the word to the screen memory
-	dbf d0, .copy_screen_low    ; Loop until all the message is copied
+	subq #1, d7
+	beq boot_gem
 
-; Check the different commands and the keyboard
-	check_commands
+	move.w #$070, $FFFF8240.w 	; Set the index 0 color to black
+	cmp.w  #$4E75, (COPYCODE_A_SRCADDR + COPYCODE_SIZE)
+	bne.s wait_code
+	move.w #$007, $FFFF8240.w 	; Set the index 0 color to black
+	cmp.w  #$4E75, (COPYCODE_B_SRCADDR + COPYCODE_SIZE)
+	bne.s wait_code
 
-	bra .print_loop_low		; Continue printing the message
-
-.print_loop_high:
-	vsync_wait
-
-; We must move from the cartridge ROM to the screen memory to display the messages
-	move.l a6, a1				; Set the screen memory address in a1
-	move.l a6, a2
-	lea BYTES_ROW_HIGH(a2), a2	; Move to the next line in the screen
-	move.l #FRAMEBUFFER_ADDR, a0		; Set the cartridge ROM address in a0
-	move.l #TRANSTABLE, a3		; Set the translation table in a3
-	move.l #(ROWS_HIGH -1), d0	; Set the number of rows to copy - 1
-.copy_screen_row_high:
-	move.l #(COLS_HIGH -1), d1	; Set the number of columns to copy - 1 
-.copy_screen_col_high:
-	move.w (a0)+ , d2			; Copy a word from the cartridge ROM
-	move.w d2, d3				; Copy the word to d3
-	and.w #$FF00, d3			; Mask the high byte
-	lsr.w #7, d3				; Shift the high byte 7 bits to the right
-	move.w (a3, d3.w), d4		; Translate the high byte
-	swap d4						; Swap the words
-
-	and.w #$00FF, d2			; Mask the low byte
-	add.w d2, d2				; Double the low byte
-	move.w (a3, d2.w), d4		; Translate the low byte
-
-	move.l d4, (a1)+			; Copy the word to the screen memory
-	move.l d4, (a2)+			; Copy the word to the screen memory
-
-	dbf d1, .copy_screen_col_high   ; Loop until all the message is copied
-
-	lea BYTES_ROW_HIGH(a1), a1	; Move to the next line in the screen
-	lea BYTES_ROW_HIGH(a2), a2	; Move to the next line in the screen
-
-	dbf d0, .copy_screen_row_high   ; Loop until all the message is copied
-
-; Check the different commands and the keyboard
-	check_commands
-
-	bra .print_loop_high		; Continue printing the message
-	
-.reset:
-	; Copy the reset code out of the ROM because it is going to dissapear!
-    move.l #.end_reset_code_in_stack - .start_reset_code_in_stack, d6
-    lea -(.end_reset_code_in_stack - .start_reset_code_in_stack)(sp), sp
-    move.l sp, a2
-    move.l sp, a3
-    lea .start_reset_code_in_stack, a1    ; a1 points to the start of the code in ROM
+start_demo:
+; Move the code below the screen memory
+	lea (SCREEN_A_BASE_ADDR-COPIED_CODE_OFFSET), a2
+	; Copy the code out of the ROM to avoid unstable behavior
+    move.l #COPIED_CODE_SIZE, d6
+    lea ROM4_ADDR, a1    ; a1 points to the start of the code in ROM
     lsr.w #2, d6
     subq #1, d6
-.copy_reset_code:
+
+.copy_rom_code:
     move.l (a1)+, (a2)+
-    dbf d6, .copy_reset_code
+    dbf d6, .copy_rom_code
+	lea SCREEN_A_BASE_ADDR - COPIED_CODE_OFFSET + (start_rom_code - ROM4_ADDR), a3	; Save the screen memory address in A3
 	jmp (a3)
 
-	even
-.start_reset_code_in_stack:
+start_rom_code:
+    ; For performance reasons, we will positive and negative index values to avoid some operations
+    move.l #(ROMCMD_START_ADDR + $8000), a0 ; Start address of the ROM3
+    ; SEND HEADER WITH MAGIC NUMBER
+    move.w #CMD_START_DEMO, d7 	 ; Command START_DEMO
+    tst.b (a0, d7.w)             ; 
+
+; Set colors
+ 	move.w #$000, $FF8240 	; Set the index 0 color to black
+ 	move.w #$311, $FF8242 	; Set the index 1 color
+ 	move.w #$511, $FF8244 	; Set the index 2 color
+ 	move.w #$711, $FF8246 	; Set the index 3 color
+ 	move.w #$131, $FF8248 	; Set the index 4 color
+ 	move.w #$331, $FF824A 	; Set the index 5 color
+ 	move.w #$531, $FF824C 	; Set the index 6 color
+ 	move.w #$731, $FF824E 	; Set the index 7 color
+ 	move.w #$113, $FF8250 	; Set the index 8 color
+ 	move.w #$133, $FF8252 	; Set the index 9 color
+ 	move.w #$333, $FF8254 	; Set the index 10 color
+ 	move.w #$751, $FF8256 	; Set the index 11 color
+ 	move.w #$171, $FF8258 	; Set the index 12 color
+ 	move.w #$555, $FF825A 	; Set the index 13 color
+ 	move.w #$733, $FF825C 	; Set the index 14 color
+ 	move.w #$777, $FF825E 	; Set the index 15 color
+
+; Detect if we are a ST or STE
+	move.l _p_cookies.w,d0      ; Check the cookie-jar to know what type of machine we are running on
+	beq .loop_low_st      ; No cookie-jar, so it's a TOS <= 1.04
+	movea.l d0,a0               ; Get the address of the cookie-jar
+.loop_mch_cookie:
+	move.l (a0)+,d0             ; The cookie jar value is zero, so old hardware again
+	beq .loop_low_st
+	cmp.l #'_MCH',d0            ; Is it the _MCH cookie?
+	beq.s .found_mch_cookie         ; Yes, so we found the machine type
+	addq.w #4,a0                ; No, so skip the cookie name
+	bra.s .loop_mch_cookie      ; And try the next cookie
+.found_mch_cookie:
+	move.l	(a0)+,d0            ; Get the cookie value
+; Check for MegaSTE or STE and if so, branch to the appropriate handler
+    cmp.l #COOKIE_JAR_MEGASTE, d0
+    beq .loop_low_ste
+    cmp.l #COOKIE_JAR_STE, d0
+    beq .loop_low_ste
+
+
+.loop_low_st:
+
+	vsync_wait
+
+    ; For performance reasons, we will positive and negative index values to avoid some operations
+    move.l #(ROMCMD_START_ADDR + $8000), a0 ; Start address of the ROM3
+    ; SEND HEADER WITH MAGIC NUMBER
+    move.w #CMD_VBLANK, d7 	     ; Command VBLANK
+    tst.b (a0, d7.w)             ; 
+
+ 	move.w #$000, $FFFF8240.w 	; Set the index 0 color to black
+
+	move.w sr, _dskbufp.w					; Save the status register
+
+	ori.w #$0700, sr						; Disable interrupts
+
+	tst.l $FA05FC
+	beq.s .fb_b
+.fb_a:
+	jsr COPYCODE_A_ADDR
+	bra.s .continue
+.fb_b:
+	jsr COPYCODE_B_ADDR
+
+.continue:
+	move.w _dskbufp.w, sr		; Restore the status register
+
+ 	move.w #$500, $FFFF8240.w 	; Set the index 0 color to red
+
+; Check the different commands and the keyboard
+	check_keys
+	check_commands
+
+	bra .loop_low_st	; Continue displaying framebuffers in Atari ST mode
+
+.loop_low_ste:
+
+	vsync_wait
+
+
+ 	move.w #$050, $FFFF8240.w 	; Set the index 0 color to green
+
+    ; For performance reasons, we will positive and negative index values to avoid some operations
+    move.l #(ROMCMD_START_ADDR + $8000), a0 ; Start address of the ROM3
+    ; SEND HEADER WITH MAGIC NUMBER
+    move.w #CMD_VBLANK, d7 	     ; Command VBLANK
+    tst.b (a0, d7.w)             ; 
+
+	move.w sr, _dskbufp.w					; Save the status register
+
+	ori.w #$0700, sr						; Disable interrupts
+
+    move.w  #2,BLT_SRC_XINC.w         ; +2 bytes per word inside line
+    move.w  #2,BLT_DST_XINC.w
+    clr.w  BLT_SRC_YINC.w             ; linear stream: next "line" starts
+	clr.w  BLT_DST_YINC.w             ; immediately after previous (no extra stride)
+
+    move.w  #$FFFF,BLT_ENDMASK1.w     ; fully open masks
+    move.w  #$FFFF,BLT_ENDMASK2.w
+    move.w  #$FFFF,BLT_ENDMASK3.w
+
+    clr.b  BLT_SKEW.w                 ; no bit shift
+
+    move.w  #16000,BLT_XCNT.w         ; words per line (640*2 = 1280 bytes)
+    move.w  #1,BLT_YCNT.w             ; lines (25 * 1280 = 32000 bytes)
+
+	move.b #$2, BLT_HOP.w 			  ; blitter HOP operation. Copy src to dest, 1:1 operation.
+	move.b #$3, BLT_OP.w 			  ; blitter operation. Copy src to dest, replace copy.
+
+
+	tst.l $FA05FC
+	bne.s .fb_b_ste
+.fb_a_ste:
+    move.l  #SCREEN_A_BASE_ADDR,BLT_DST_ADDR.w     ; destination (even-aligned)
+    move.l  #FRAMEBUFFER_A_ADDR,BLT_SRC_ADDR     ; source (even-aligned)
+	move.b  #(SCREEN_B_BASE_ADDR >> 16), d0
+	move.b  #((SCREEN_B_BASE_ADDR >> 8) & 8), d1
+	move.b  #((SCREEN_B_BASE_ADDR >> 0) & 8), d2
+	bra.s .continue_ste
+.fb_b_ste:
+    move.l  #SCREEN_B_BASE_ADDR,BLT_DST_ADDR.w     ; destination (even-aligned)
+    move.l  #FRAMEBUFFER_B_ADDR,BLT_SRC_ADDR     ; source (even-aligned)
+	move.b  #(SCREEN_A_BASE_ADDR >> 16), d0
+	move.b  #((SCREEN_A_BASE_ADDR >> 8) & 8), d1
+	move.b  #((SCREEN_A_BASE_ADDR >> 0) & 8), d2
+
+.continue_ste:
+	move.b  d0, VIDEO_BASE_ADDR_HIGH.w           ; put in high screen address byte
+	move.b  d1, VIDEO_BASE_ADDR_MID.w           ; put in mid screen address byte
+	move.b  d2, VIDEO_BASE_ADDR_LOW.w           ; put in low screen address byte (STe only)
+
+ 	move.w #$000, $FFFF8240.w 	; Set the index 0 color to black
+
+    ; HOG mode
+    move.b  #BLT_HOG_MODE,BLT_CTRL.w
+
+	move.w _dskbufp.w, sr		; Restore the status register
+
+ 	move.w #$005, $FFFF8240.w 	; Set the index 0 color to blue
+
+; Check the different commands and the keyboard
+	check_keys
+	check_commands
+
+;	gemdos  Crawcin,8
+
+	bra .loop_low_ste	; Continue displaying framebuffers in Atari STE mode
+
+.reset:
     move.l #PRE_RESET_WAIT, d6
 .wait_me:
     subq.l #1, d6           ; Decrement the outer loop
@@ -261,17 +380,27 @@ pre_auto:
 	nop
 .end_reset_code_in_stack:
 
+lowres_only:
+	print lowres_only_txt
+
 boot_gem:
 	; If we get here, continue loading GEM
     rts
 
+lowres_only_txt: 
+	dc.b "Demo only supports low res",$d,$a
+	dc.b 0
+
+	even
+
+
 rom_function:
 	; Place here your driver code
 	rts
-; Shared functions included at the end of the file
-; Don't forget to include the macros for the shared functions at the top of file
-    include "inc/sidecart_functions.s"
 
+
+end_rom_code:
 end_pre_auto:
 	even
+
 	dc.l 0
