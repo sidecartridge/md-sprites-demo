@@ -17,15 +17,19 @@
 #define MEM_LIBC_MALLOC 1
 #else
 // MEM_LIBC_MALLOC is incompatible with non polling versions
-// Must be undefined!!!! MEM_LIBC_MALLOC to 0 will fail
-#undef MEM_LIBC_MALLOC
+#define MEM_LIBC_MALLOC 0
 #endif
 
 #define MEM_ALIGNMENT 4
 #define MEM_SIZE 4096
 
+#if defined(_DEBUG) && (_DEBUG != 0)
 #define MEM_SANITY_CHECK 1
-#define MEM_OVERFLOW_CHECK 1
+#define MEM_OVERFLOW_CHECK 2
+#else
+#define MEM_SANITY_CHECK 0
+#define MEM_OVERFLOW_CHECK 0
+#endif
 
 #define MEMP_NUM_PBUF 32
 #define MEMP_NUM_TCP_PCB 10
@@ -39,6 +43,10 @@
 #define TCP_MSS 1460
 #define TCP_WND (12 * TCP_MSS)
 #define TCP_SND_BUF (8 * TCP_MSS)
+
+// #define TCP_WND (6 * TCP_MSS)
+// #define TCP_SND_BUF (4 * TCP_MSS)
+
 #define TCP_SND_QUEUELEN ((4 * (TCP_SND_BUF) + (TCP_MSS - 1)) / (TCP_MSS))
 #define LWIP_NETIF_STATUS_CALLBACK 1
 #define LWIP_NETIF_LINK_CALLBACK 1
@@ -98,7 +106,7 @@
 
 // Custom flags
 // #define TCP_FAST_INTERVAL 50
-#define TCP_NODELAY 1
+#define TCP_NODELAY 0
 
 #define LWIP_NETIF_API \
   0  //  Not needed. Sequential API, and therefore for platforms with OSes only.
@@ -106,8 +114,6 @@
   0  //  Not needed. Sequential API, and therefore for platforms with OSes only.
 
 #define LWIP_HTTPD 0
-
-#if LWIP_HTTPD == 1
 #define LWIP_HTTPD_SSI 1
 #define LWIP_HTTPD_CGI 1
 // don't include the tag comment - less work for the CPU, but may be harder to
@@ -122,14 +128,15 @@
 #define HTTPD_POLL_INTERVAL 1
 #define HTTPD_PRECALCULATED_CHECKSUM 1
 #define HTTPD_USE_MEM_POOL 1
-#define MEMP_NUM_PARALLEL_HTTPD_CONNS 4
-#define MEMP_NUM_PARALLEL_HTTPD_SSI_CONNS 4
+
+#define MEMP_NUM_PARALLEL_HTTPD_CONNS 2
+#define MEMP_NUM_PARALLEL_HTTPD_SSI_CONNS 2
+
 #define LWIP_HTTPD_ABORT_ON_CLOSE_MEM_ERROR 1
 
 #define HTTPD_FSDATA_FILE "fsdata_srv.c"
-#endif
 
-#if APP_DOWNLOAD_HTTPS == 1
+#if FMANAGER_DOWNLOAD_HTTPS == 1
 // If you don't want to use TLS (just a http request) you can avoid linking to
 // mbedtls and remove the following
 #define LWIP_ALTCP 1
@@ -137,8 +144,8 @@
 #define LWIP_ALTCP_TLS 1
 #define LWIP_ALTCP_TLS_MBEDTLS 1
 #define ALTCP_MBEDTLS_AUTHMODE MBEDTLS_SSL_VERIFY_NONE
-// #define ALTCP_MBEDTLS_DEBUG  LWIP_DBG_ON
-// #define ALTCP_MBEDTLS_LIB_DEBUG LWIP_DBG_ON
+#define ALTCP_MBEDTLS_DEBUG LWIP_DBG_ON
+#define ALTCP_MBEDTLS_LIB_DEBUG LWIP_DBG_ON
 #endif
 
 // Note bug in lwip with LWIP_ALTCP and LWIP_DEBUG
