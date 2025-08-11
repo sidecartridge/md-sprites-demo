@@ -37,7 +37,7 @@
 #define WRITE_SIGNAL_PIN_COUNT 1
 
 // FLASH and RAM sections constants.
-#define ROM_BANKS 2  // Number of ROM banks to emulate
+#define ROM_BANKS 1  // Number of ROM banks to emulate
 #define FLASH_ROM_LOAD_OFFSET \
   0x0  // Offset start in FLASH reserved for ROMs. Survives a reset or
        // poweroff. If 0x0, it means that the 128KB of FLASH are used for the
@@ -52,10 +52,13 @@
 
 // Frequency constants.
 #define SAMPLE_DIV_FREQ (1.f)         // Sample frequency division factor.
-#define RP2040_CLOCK_FREQ_KHZ 225000  // Clock frequency in KHz (225MHz).
+#define RP2040_CLOCK_FREQ_KHZ 280000  // Clock frequency in KHz (280MHz).
+
+#undef PICO_FLASH_SPI_CLKDIV
+#define PICO_FLASH_SPI_CLKDIV 2
 
 // Voltage constants.
-#define RP2040_VOLTAGE VREG_VOLTAGE_1_10  // Voltage in 1.10 Volts.
+#define RP2040_VOLTAGE VREG_VOLTAGE_1_20  // Voltage in 1.20 Volts.
 #define VOLTAGE_VALUES                                                 \
   (const char *[]){"NOT VALID", "NOT VALID", "NOT VALID", "NOT VALID", \
                    "NOT VALID", "NOT VALID", "0.85v",     "0.90v",     \
