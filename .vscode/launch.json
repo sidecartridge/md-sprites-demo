@@ -3,7 +3,7 @@
     "configurations": [
         {
             // Modify the name to your project name
-            "name": "MULTIDEVICE UFIRMWARE TEMPLATE Debug",
+            "name": "GPU DEMO Debug",
             "cwd": "${workspaceFolder}",
             "executable": "${command:cmake.launchTargetPath}",
             "request": "launch",
