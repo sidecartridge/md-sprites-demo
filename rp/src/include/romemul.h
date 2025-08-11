@@ -23,7 +23,7 @@
 #include "memfunc.h"
 #include "pico/stdlib.h"
 
-#define ROMEMUL_BUS_BITS 17
+#define ROMEMUL_BUS_BITS 16
 
 typedef void (*IRQInterceptionCallback)();
 
