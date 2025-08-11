@@ -18,20 +18,8 @@ cd pico-extras
 git checkout tags/sdk-2.1.1
 cd ..
 
-echo "Pinning the FatFs SDK versions..."
-cd fatfs-sdk
-#git checkout v3.5.1
-#git checkout 6bdb39f96fe8b897aff12bf3416e32515792e318
-git checkout tags/v3.6.2
-cd ..
-
-# This is a dirty hack to guarantee that I can use the fatfs-sdk submodule
-echo "Patching the fatfs-sdk... to use chmod"
-sed -i.bak 's/#define FF_USE_CHMOD[[:space:]]*0/#define FF_USE_CHMOD 1/' fatfs-sdk/src/include/ffconf.h && mv fatfs-sdk/src/include/ffconf.h.bak .
-
 # Set the environment variables of the SDKs
 export PICO_SDK_PATH=$PWD/pico-sdk
-export FATFS_SDK_PATH=$PWD/fatfs-sdk
 export PICO_EXTRAS_PATH=$PWD/pico-extras
 
 # Return to booster path
@@ -57,8 +45,9 @@ export RELEASE_DATE=$(date +"%Y-%m-%d %H:%M:%S")
 echo "Release date: $RELEASE_DATE"
 
 # Set the board type to be used for building
-# If nothing passed as first argument, use pico_w
-export BOARD_TYPE=${1:-pico_w}
+# If nothing passed as first argument, use pico
+# This project is an exception, as it can be built for pico or pico_w
+export BOARD_TYPE=${1:-pico}
 export PICO_BOARD=$BOARD_TYPE
 echo "Board type: $BOARD_TYPE"
 
