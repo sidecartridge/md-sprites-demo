@@ -135,6 +135,30 @@
     dma_channel_unclaim(_dma_channel);                             \
   } while (0)
 
+#define COPY_32BIT_DMA(dest, source, num_bytes)                    \
+  do {                                                             \
+    size_t _rounded_bytes = ((num_bytes) + 3) & ~3;                \
+    size_t _num_words = _rounded_bytes / 4;                        \
+    int _dma_channel = dma_claim_unused_channel(true);             \
+    dma_channel_config _dma_cfg =                                  \
+        dma_channel_get_default_config(_dma_channel);              \
+    channel_config_set_transfer_data_size(&_dma_cfg, DMA_SIZE_32); \
+    channel_config_set_read_increment(&_dma_cfg, true);            \
+    channel_config_set_write_increment(&_dma_cfg, true);           \
+    channel_config_set_bswap(&_dma_cfg, false);                    \
+    dma_channel_configure(                                         \
+        _dma_channel, /* Channel */                                \
+        &_dma_cfg,    /* Channel config */                         \
+        (dest),       /* Destination address */                    \
+        (source),     /* Source address */                         \
+        (_num_words), /* Number of 16-bit words to transfer */     \
+        false         /* Don't start yet */                        \
+    );                                                             \
+    dma_channel_start(_dma_channel);                               \
+    dma_channel_wait_for_finish_blocking(_dma_channel);            \
+    dma_channel_unclaim(_dma_channel);                             \
+  } while (0)
+
 /**
  * @brief Macro to set a shared variable.
  *
