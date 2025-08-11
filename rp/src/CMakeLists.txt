@@ -25,7 +25,7 @@ endif ()
 # If not specified, use pico_w as default board type
 set(BOARD_TYPE $ENV{BOARD_TYPE})
 if(NOT BOARD_TYPE)
-    set(BOARD_TYPE "pico_w")
+    set(BOARD_TYPE "pico")
 endif()
 set(PICO_BOARD ${BOARD_TYPE})
 
@@ -39,13 +39,6 @@ elseif("${BOARD_TYPE}" STREQUAL "sidecartos_16mb")
 else()
     message(FATAL_ERROR "Unknown BOARD_TYPE: ${BOARD_TYPE}")
 endif()
-
-# Add the env variable FATFS_SDK_PATH if it does not exist
-if(NOT DEFINED ENV{FATFS_SDK_PATH})
-    set(ENV{FATFS_SDK_PATH} ../../fatfs-sdk)
-endif()
-# Show the value
-message("FATFS_SDK_PATH: $ENV{FATFS_SDK_PATH}")
 
 # Add the env variable PICO_SDK_PATH if it does not exist
 if(NOT DEFINED ENV{PICO_SDK_PATH})
@@ -73,15 +66,6 @@ pico_sdk_init()
 
 add_subdirectory(settings)
 
-# Add u8g2 library
-add_subdirectory(u8g2)
-
-# Add HTTP client library
-add_subdirectory(httpc)
-
-# Tell CMake where to find other source code
-add_subdirectory($ENV{FATFS_SDK_PATH}/src build)
-  
 # Tell CMake where to find the executable source file
 add_executable(${PROJECT_NAME} 
         main.c
@@ -91,20 +75,15 @@ pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/romemul.pio)
 
 target_sources(${PROJECT_NAME} PRIVATE
         aconfig.c
-        blink.c
-        display.c
-        display_term.c
-        download.c
         emul.c
         gconfig.c
-        hw_config.c
-        network.c
         reset.c
         romemul.c
-        sdcard.c
         select.c
-        term.c
-        settings/settings.c)
+        settings/settings.c
+        vga.c
+        vga_draw.c
+        vga_font.c)
 
 # Create map/bin/hex/uf2 files
 pico_add_extra_outputs(${PROJECT_NAME})
@@ -112,20 +91,18 @@ pico_add_extra_outputs(${PROJECT_NAME})
 # Link libraries required for the project
 target_link_libraries(${PROJECT_NAME} PRIVATE
     ${LINK_LIBRARIES}        # External or additional libraries passed as variables
+    hardware_dma           # DMA support
     hardware_flash           # Flash memory access
-    no-OS-FatFS-SD-SDIO-SPI-RPi-Pico                # FATFS library   
+    hardware_pio             # PIO support
     pico_stdlib              # Core functionality
     pico_multicore          # Multicore support
-    httpc                    # HTTP client
-    settings                 # Custom settings library
-    u8g2                     # for display
+    settings                # Custom settings library
 )
 
 # Conditionally link the CYW43 architecture library if supported
 if (PICO_CYW43_SUPPORTED)
     target_link_libraries(${PROJECT_NAME} PRIVATE
-        pico_cyw43_arch_lwip_poll
-#        pico_cyw43_arch_lwip_threadsafe_background
+        pico_cyw43_arch_lwip_poll 
         )
 else()
     message(WARNING "CYW43 architecture not supported")
@@ -182,7 +159,7 @@ if(NOT RELEASE_DATE)
 endif()
 
 if (NOT _DEBUG)
-        set(_DEBUG 1)
+        set(_DEBUG 0)
 endif()
 
 # Debug outputs
@@ -269,4 +246,21 @@ if(CLANG_FORMAT_BIN)
 
 else()
     message(WARNING "clang-format not found!")
+endif()
+
+# Define your binary type
+set(PICO_BINARY_TYPE default)  # Change to e.g. no_flash if needed
+
+# Set binary type using the variable
+pico_set_binary_type(${PROJECT_NAME} ${PICO_BINARY_TYPE})
+
+# Conditionally set linker script
+if(NOT "${PICO_BINARY_TYPE}" STREQUAL "copy_to_ram")
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        PICO_TARGET_LINKER_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/memmap_rp.ld
+    )
+else()
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        PICO_TARGET_LINKER_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/memmap_rp_copy_to_ram.ld
+    )
 endif()
