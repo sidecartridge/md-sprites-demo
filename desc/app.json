@@ -1,10 +1,11 @@
 {
   "uuid": "<APP_UUID>",
-  "name": "APP DEV Template",
-  "description": "Microfirmware Application Template for Atari ST",
+  "name": "GPU Demo",
+  "description": "A demo application showcasing graphics co-processing rendering on the RP2040 and Atari ST  <a target='_blank' rel='noopener noreferrer' href='https://docs.sidecartridge.com/sidecartridge-multidevice/microfirmwares/gpu-demo/'>Learn how</a>",
   "image": "https://placehold.co/256x256/png",
   "tags": [
-    "Sample",
+    "demo",
+    "GPU"
   ],
   "devices": [
     "Atari ST",
