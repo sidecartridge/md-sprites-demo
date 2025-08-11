@@ -385,6 +385,14 @@ lowres_only:
 
 boot_gem:
 	; If we get here, continue loading GEM
+	; Set the screen memory address to the framebuffer 
+	move.l #SCREEN_B_BASE_ADDR, d0
+	move.w #-1, -(sp);  ; No change res
+	move.l d0, -(sp)
+	move.l d0, -(sp)
+	move.w #5,-(sp)		; Set the function number to 3 (set screen base)
+	trap #14			; Call XBIOS
+	lea 12(sp), sp		; Clean the stack
     rts
 
 lowres_only_txt: 
