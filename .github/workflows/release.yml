@@ -42,7 +42,7 @@ jobs:
         pip install boto3
           
     - name: Run - Build PICO_W release version
-      run: ./build.sh pico_w Release ${{ secrets.APP_UUID }}
+      run: ./build.sh pico Release ${{ secrets.APP_UUID }}
 
     - name: Get current date
       id: build
