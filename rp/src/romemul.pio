@@ -87,7 +87,7 @@
 
 ; Read from the GPIO pins into the OSR (output shift register)
 ; Autopush the address to the FIFO TX
-    in pins 17               side READ_NOT_WRITE
+    in pins 16               side READ_NOT_WRITE
 
 ; Get the value obtained from the FIFO and push it to the output pins
 ; Before pushing the values to the output pins, the READ and WRITE signals must be
@@ -114,7 +114,7 @@
 ; If some of the pins are not properly connected and are floating, disable these two
 ; lines below to help detect the floating pin in the read bus lines.
 ;    mov osr, null           side NOT_READ_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
-;    out pins, 17            side NOT_READ_NOT_WRITE
+;    out pins, 16            side NOT_READ_NOT_WRITE
 
 .wrap
 
@@ -127,7 +127,7 @@ static inline void romemul_read_program_init(PIO pio, uint sm, uint offset, uint
 
     // Configure pins to read the address in the bus
     sm_config_set_in_pins(&c, addr_pin_base);
-    sm_config_set_in_shift(&c, false, true, addr_pin_count + 1);   // Autopush after 17 bits read
+    sm_config_set_in_shift(&c, false, true, addr_pin_count);   // Autopush after 17 bits read
     sm_config_set_out_shift(&c, false, true, addr_pin_count);   // Autopull after 16 bits write
     sm_config_set_out_pins(&c, addr_pin_base, addr_pin_count);
 
