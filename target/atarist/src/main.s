@@ -278,11 +278,18 @@ start_rom_code:
 	beq.s .fb_b
 .fb_a:
 	jsr COPYCODE_A_ADDR
+	move.b  #(SCREEN_B_BASE_ADDR >> 16), d0
+	move.b  #((SCREEN_B_BASE_ADDR >> 8) & 8), d1
 	bra.s .continue
 .fb_b:
 	jsr COPYCODE_B_ADDR
+	move.b  #(SCREEN_A_BASE_ADDR >> 16), d0
+	move.b  #((SCREEN_A_BASE_ADDR >> 8) & 8), d1
 
 .continue:
+	move.b  d0, VIDEO_BASE_ADDR_HIGH.w           ; put in high screen address byte
+	move.b  d1, VIDEO_BASE_ADDR_MID.w           ; put in mid screen address byte
+
 	move.w _dskbufp.w, sr		; Restore the status register
 
  	move.w #$500, $FFFF8240.w 	; Set the index 0 color to red
