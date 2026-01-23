@@ -1,10 +1,10 @@
 #include "select.h"
 
-static reset_callback_t __not_in_flash_func(reset_cb) = NULL;
-static reset_callback_t __not_in_flash_func(reset_long_cb) =
+static reset_callback_t reset_cb = NULL;
+static reset_callback_t reset_long_cb =
     NULL;  // New long-press callback
 
-void __not_in_flash_func(select_waitPush)() {
+void select_waitPush() {
   DPRINTF("Waiting for SELECT button to be released\n");
   uint32_t press_duration = 0;
   while (select_detectPush()) {
