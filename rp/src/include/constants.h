@@ -52,10 +52,7 @@
 
 // Frequency constants.
 #define SAMPLE_DIV_FREQ (1.f)         // Sample frequency division factor.
-#define RP2040_CLOCK_FREQ_KHZ 280000  // Clock frequency in KHz (280MHz).
-
-#undef PICO_FLASH_SPI_CLKDIV
-#define PICO_FLASH_SPI_CLKDIV 2
+#define RP2040_CLOCK_FREQ_KHZ 240000  // Clock frequency in KHz (240MHz).
 
 // Voltage constants.
 #define RP2040_VOLTAGE VREG_VOLTAGE_1_20  // Voltage in 1.20 Volts.
@@ -83,7 +80,6 @@
 
 // NOLINTBEGIN(readability-identifier-naming)
 extern unsigned int __flash_binary_start;
-extern unsigned int _rom_temp_start;
 extern unsigned int _booster_app_flash_start;
 extern unsigned int _config_flash_start;
 extern unsigned int _global_lookup_flash_start;
