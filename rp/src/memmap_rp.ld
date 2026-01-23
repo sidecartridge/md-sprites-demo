@@ -24,7 +24,6 @@
 MEMORY
 {
     FLASH(rx) : ORIGIN = 0x10000000, LENGTH = 1024k  /* The first 1024kb available */
-    ROM_TEMP(rw) : ORIGIN = 0x10100000, LENGTH = 128k /* Store the 128KB ROM loaded here */
 
 /* This is the default flash space for the app if you don't need room to store data */
 /*    FLASH(rx) : ORIGIN = 0x10000000, LENGTH = 1152k  The first 1152kb available */
@@ -252,13 +251,6 @@ SECTIONS
     .flash_end : {
         PROVIDE(__flash_binary_end = .);
     } > FLASH
-
-   .rom_temp :
-    {
-        _rom_temp_start = .;
-        KEEP(*(.rom_temp))
-        _rom_temp_end = .;
-    } > ROM_TEMP
 
    .booster_app_flash :
     {
