@@ -14,7 +14,6 @@
 #include <string.h>
 #include <time.h>
 
-#include "aconfig.h"
 #include "constants.h"
 #include "debug.h"
 #include "memfunc.h"
