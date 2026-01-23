@@ -7,8 +7,7 @@
 #define img_tiles_stride 16
 #define img_tiles_num_spr 2
 
-const unsigned int img_tiles_data[] __not_in_flash("img_tiles_data")
-    __attribute__((aligned(4))) = {
+const unsigned int img_tiles_data_flash[] __attribute__((aligned(4))) = {
         0xc0c0c0c0, 0xc0c5c5c0, 0xc0c5c5c0, 0xc0c0c5c5, 0xc0c0c0c0, 0xc5c0c1c0,
         0xc5c5c5c1, 0xc0c0c0c0, 0xc0c0c0c0, 0xc0c5c0c0, 0xc0c1c0c0, 0xc0c0c5c5,
         0xc0c5c0c0, 0xc0c0c0c0, 0xc0c0c0c0, 0xc0c0c0c0, 0xc5c0c0c0, 0xd5d5d5d5,
