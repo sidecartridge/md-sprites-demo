@@ -6,7 +6,6 @@
  * Description: Main file for an app.
  */
 
-#include "aconfig.h"
 #include "constants.h"
 #include "debug.h"
 #include "emul.h"
@@ -18,9 +17,9 @@
 // for the application. It is the first file that is executed when the
 // application is started. It is responsible for setting up the hardware and
 // software environment for the application to run. It is also responsible for
-// initializing the global configuration and application settings. If the
-// settings are not initialized, it jumps to the booster app to initialize them.
-// If the settings are initialized, it starts the application.
+// initializing the global configuration. If the configuration is not
+// initialized, it jumps to the booster app to initialize it. If the
+// configuration is initialized, it starts the application.
 // A good practice is to keep the main.c file as simple as possible. It should
 // not be necessary to modify this file when adding new features to the
 // application. Instead, new features should be implemented in separate files
@@ -78,8 +77,6 @@ int main() {
 
   DPRINTF("Flash start: 0x%X, length: %u bytes\n",
           (unsigned int)&__flash_binary_start, flashLength);
-  DPRINTF("ROM Temp start: 0x%X, length: %u bytes\n",
-          (unsigned int)&_rom_temp_start, romTempLength);
   DPRINTF("Booster Flash start: 0x%X, length: %u bytes\n",
           (unsigned int)&_booster_app_flash_start, boosterFlashLength);
   DPRINTF("Config Flash start: 0x%X, length: %u bytes\n",
@@ -98,37 +95,8 @@ int main() {
   // If the global settings are not intialized, jump to the booster app to
   // initialize them
   if (err < 0) {
-    DPRINTF("Settings not initialized. Jump to Booster application\n");
+    DPRINTF("Global config not initialized. Jump to Booster application\n");
     reset_jump_to_booster();
-  }
-
-  // If we are here, it means the app uuid key is correct. So we can read or
-  // initialize the app settings
-  err = aconfig_init(CURRENT_APP_UUID_KEY);
-  switch (err) {
-    case ACONFIG_SUCCESS:
-      DPRINTF("App settings found and already initialized\n");
-      break;
-    case ACONFIG_APPKEYLOOKUP_ERROR:
-      // The app key is not found in the lookup table. Go to booster.
-      DPRINTF("App key not found in the lookup table. Go to BOOSTER.\n");
-      reset_jump_to_booster();
-      // We should never reach this point
-      break;
-    case ACONFIG_INIT_ERROR:
-      // No settings found. First time the app is executed? Then initialize the
-      // settings
-      DPRINTF("App settings not initialized. Initialize them first\n");
-      err = settings_save(aconfig_getContext(), true);
-      if (err < 0) {
-        // Something went wrong saving the settings. Go to booster.
-        DPRINTF("Error saving settings. Go to BOOSTER.\n");
-        reset_jump_to_booster();
-        // We should never reach this point
-      }
-      // Show the settings
-      settings_print(aconfig_getContext(), NULL);
-      break;
   }
 
   // Start the application
