@@ -22,7 +22,7 @@ if (DEFINED ENV{PICOTOOL_OVERRIDE_DIR})
     endif()
 endif ()
 
-# If not specified, use pico_w as default board type
+# If not specified, use pico as default board type
 set(BOARD_TYPE $ENV{BOARD_TYPE})
 if(NOT BOARD_TYPE)
     set(BOARD_TYPE "pico")
@@ -30,11 +30,7 @@ endif()
 set(PICO_BOARD ${BOARD_TYPE})
 
 # Determine board type macros
-if("${BOARD_TYPE}" STREQUAL "pico_w")
-    add_compile_definitions(BOARD_TYPE_PICO_W=1 BOARD_TYPE_PICO=0 BOARD_TYPE_CUSTOM16MB=0)
-elseif("${BOARD_TYPE}" STREQUAL "pico")
-    add_compile_definitions(BOARD_TYPE_PICO_W=0 BOARD_TYPE_PICO=1 BOARD_TYPE_CUSTOM16MB=0)
-elseif("${BOARD_TYPE}" STREQUAL "sidecartos_16mb")
+if("${BOARD_TYPE}" STREQUAL "pico")
     add_compile_definitions(BOARD_TYPE_PICO_W=0 BOARD_TYPE_PICO=1 BOARD_TYPE_CUSTOM16MB=0)
 else()
     message(FATAL_ERROR "Unknown BOARD_TYPE: ${BOARD_TYPE}")
@@ -47,16 +43,8 @@ endif()
 # Show the value
 message("PICO_SDK_PATH: $ENV{PICO_SDK_PATH}")
 
-# Add the env variable PICO_EXTRAS_PATH if it does not exist
-if(NOT DEFINED ENV{PICO_EXTRAS_PATH})
-    set(ENV{PICO_EXTRAS_PATH} ../../pico-extras)
-endif()
-# Show the value
-message("PICO_EXTRAS_PATH: $ENV{PICO_EXTRAS_PATH}")
-
 # Include build functions from Pico SDK
 include($ENV{PICO_SDK_PATH}/pico_sdk_init.cmake)
-include($ENV{PICO_EXTRAS_PATH}/external/pico_extras_import.cmake)
 
 # Set name of project (as PROJECT_NAME) and C/C   standards
 project(rp C CXX)
@@ -74,7 +62,6 @@ add_executable(${PROJECT_NAME}
 pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/romemul.pio)
 
 target_sources(${PROJECT_NAME} PRIVATE
-        aconfig.c
         emul.c
         gconfig.c
         reset.c
@@ -99,21 +86,11 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     settings                # Custom settings library
 )
 
-# Conditionally link the CYW43 architecture library if supported
-if (PICO_CYW43_SUPPORTED)
-    target_link_libraries(${PROJECT_NAME} PRIVATE
-        pico_cyw43_arch_lwip_poll 
-        )
-else()
-    message(WARNING "CYW43 architecture not supported")
-endif()
-
 # Link custom memmap with reserved memory for ROMs
 set_target_properties(${PROJECT_NAME} PROPERTIES
         PICO_TARGET_LINKER_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/memmap_rp.ld
 )
 
-# Needed to include lwipopts.h properly
 target_include_directories(${PROJECT_NAME} PRIVATE 
     ${CMAKE_CURRENT_LIST_DIR}
     ${CMAKE_CURRENT_LIST_DIR}/include
@@ -201,9 +178,6 @@ add_definitions(-DDISPLAY_ATARIST)
 
 # We don't modify the flash in Core 1
 add_definitions(-DPICO_FLASH_ASSUME_CORE0_SAFE=1)
-
-# Select HTTPS or HTTP downloads of the firmware
-add_definitions(-DAPP_DOWNLOAD_HTTPS=0)
 
 # Remove unused data
 target_link_options(${PROJECT_NAME} PRIVATE
