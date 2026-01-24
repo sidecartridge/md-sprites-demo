@@ -24,7 +24,6 @@
     "C_Cpp.errorSquiggles": "disabled",
     "C_Cpp.codeAnalysis.clangTidy.enabled": true,
     "C_Cpp.codeAnalysis.exclude": {
-        "**/fatfs-sdk": true,
         "**/pico-sdk": true,
         "**/pico-extras": true,
         "**/dist": true,

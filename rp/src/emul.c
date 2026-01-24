@@ -8,10 +8,16 @@
 
 #include "emul.h"
 
+#include <stdlib.h>
+#include <string.h>
+
 #include "data/font6x8.h"
 #include "data/loserboy.h"
 #include "data/tiles.h"
+#include "memfunc.h"
 #include "target_firmware.h"
+
+#define USE_DMA_BG_COPY 1
 
 #define CUSTOM_FRAMEBUFFER_INDEX 0x5fc
 #define CUSTOM_DISPLAY_COMMAND 0x5f8
@@ -24,6 +30,7 @@
 struct SPRITE bg_tiles[img_tiles_num_spr];
 struct SPRITE char_frames[img_loserboy_num_spr];
 struct CHARACTER characters[NUM_SPRITES];
+static struct SPRITE *bg_tile_ptrs[15];
 
 static semaphore_t draw_sem;
 static semaphore_t start_demo_sem;
@@ -39,6 +46,17 @@ static unsigned char *framebuffer = NULL;
 static int color_ring = 15;
 static int sprite_count = 0;
 static unsigned int last_sprite_increment = 0;
+static int active_talker = -1;
+static unsigned int *img_tiles_data_ram = NULL;
+static unsigned int *img_loserboy_data_ram = NULL;
+static uint8_t *font6x8_data_ram = NULL;
+static uint32_t *font6x8_data_words = NULL;
+static struct VGA_FONT font6x8_ram;
+static unsigned int *bg_framebuffer_ram = NULL;
+static size_t bg_framebuffer_bytes = 0;
+static size_t bg_copy_bytes_full = 0;
+static size_t bg_copy_bytes_trim = 0;
+static bool bg_full_copy_done = false;
 
 static inline int count_fps(void) {
   static int last_fps;
@@ -56,13 +74,17 @@ static inline int count_fps(void) {
 }
 
 static void init_sprites(void) {
+  if (img_tiles_data_ram == NULL || img_loserboy_data_ram == NULL) {
+    DPRINTF("ERROR: sprite data not initialized in RAM\n");
+    return;
+  }
   for (int i = 0; i < count_of(bg_tiles); i++) {
     struct SPRITE *spr = &bg_tiles[i];
     spr->width = img_tiles_width;
     spr->height = img_tiles_height;
     spr->stride = img_tiles_stride;
-    spr->data = (unsigned int
-                     *)&img_tiles_data[i * img_tiles_stride * img_tiles_height];
+    spr->data = (unsigned int *)&img_tiles_data_ram[i * img_tiles_stride *
+                                                    img_tiles_height];
   }
 
   for (int i = 0; i < count_of(char_frames); i++) {
@@ -70,8 +92,8 @@ static void init_sprites(void) {
     spr->width = img_loserboy_width;
     spr->height = img_loserboy_height;
     spr->stride = img_loserboy_stride;
-    spr->data = (unsigned int *)&img_loserboy_data[i * img_loserboy_stride *
-                                                   img_loserboy_height];
+    spr->data = (unsigned int *)&img_loserboy_data_ram[i * img_loserboy_stride *
+                                                       img_loserboy_height];
   }
 
   for (int i = 0; i < NUM_SPRITES; i++) {
@@ -88,11 +110,16 @@ static void init_sprites(void) {
 }
 
 static void __not_in_flash_func(move_character)(struct CHARACTER *ch) {
+  int ch_index = (int)(ch - characters);
   if (ch->message_frame-- < 0) {
     ch->message_index = -1;
     ch->message_frame = 600 + rand() % 1200;
+    if (active_talker == ch_index) {
+      active_talker = -1;
+    }
   } else if (ch->message_frame == 180) {
     ch->message_index = rand() % count_of(loserboy_messages);
+    active_talker = ch_index;
   }
 
   if (ch->message_frame > 1500) {
@@ -210,17 +237,8 @@ void __not_in_flash_func(emul_start)() {
 
   // 1. Check if the host device must be initialized to perform the emulation
   //    of the device, or start in setup/configuration mode
-  SettingsConfigEntry *appMode =
-      settings_find_entry(aconfig_getContext(), ACONFIG_PARAM_MODE);
-  int appModeValue = APP_MODE_SETUP;  // Setup menu
-  if (appMode == NULL) {
-    DPRINTF(
-        "APP_MODE_SETUP not found in the configuration. Using default "
-        "value\n");
-  } else {
-    appModeValue = atoi(appMode->value);
-    DPRINTF("Start emulation in mode: %i\n", appModeValue);
-  }
+
+  // Not needed in this demo
 
   // 2. Initialiaze the normal operation of the app, unless the configuration
   // option says to start the config app Or a SELECT button is (or was)
@@ -230,7 +248,6 @@ void __not_in_flash_func(emul_start)() {
   // The ROM Emulator app for example will check here if the start directly
   // in emulation mode is needed or not
   emul_preinit();
-  SEND_COMMAND_TO_DISPLAY(DISPLAY_COMMAND_NOP);
 
   // 3. If we are here, it means the app is not in emulation mode, but in
   // setup/configuration mode
@@ -241,7 +258,7 @@ void __not_in_flash_func(emul_start)() {
   // The code is stored as an array in the target_firmware.h file
   //
   // Copy the terminal firmware to RAM
-  COPY_FIRMWARE_TO_RAM((uint16_t *)target_firmware, target_firmware_length);
+  COPY_FIRMWARE_TO_RAM((uint16_t *)target_firmware, target_firmware_length * 2);
 
   // Initialize the terminal emulator PIO programs
   // The communication between the remote (target) computer and the RP2040 is
@@ -250,6 +267,7 @@ void __not_in_flash_func(emul_start)() {
   // emulator using the command protocol. Hence, if you want to implement your
   // own app or microfirmware, you should implement your own command handler
   // using this protocol.
+  SEND_COMMAND_TO_DISPLAY(DISPLAY_COMMAND_NOP);
   init_romemul(NULL, emul_dma_irq_handler_lookup, false);
   sem_init(&draw_sem, 0, 1);
   sem_init(&start_demo_sem, 0, 1);
@@ -279,8 +297,9 @@ void __not_in_flash_func(emul_start)() {
   //                       sizeof(img_tiles_data) /
   //                       sizeof(img_tiles_data[0]));
   // DPRINTF("Drawing color index for image tiles\n");
-  // draw_show_color_index(img_loserboy_data, sizeof(img_loserboy_data) /
-  //                                              sizeof(img_loserboy_data[0]));
+  // draw_show_color_index(img_loserboy_data_flash,
+  // sizeof(img_loserboy_data_flash) /
+  //                                              sizeof(img_loserboy_data_flash[0]));
 
   // xip_ctrl_hw->ctrl &= ~XIP_CTRL_EN_BITS;
 
@@ -318,12 +337,70 @@ void __not_in_flash_func(emul_start)() {
   DPRINTF("Initializing pixel masks\n");
   init_pixel_masks();
   DPRINTF("Pixel masks initialized\n");
-  font_set_font(&font6x8);
+  img_tiles_data_ram = (unsigned int *)malloc(sizeof(img_tiles_data_flash));
+  img_loserboy_data_ram =
+      (unsigned int *)malloc(sizeof(img_loserboy_data_flash));
+  size_t font_words = (sizeof(font6x8_data_flash) + 3u) / 4u;
+  font6x8_data_words = (uint32_t *)malloc(font_words * sizeof(uint32_t));
+  font6x8_data_ram = (uint8_t *)font6x8_data_words;
+  if (img_tiles_data_ram == NULL || img_loserboy_data_ram == NULL ||
+      font6x8_data_ram == NULL) {
+    DPRINTF("ERROR: failed to allocate RAM for asset data\n");
+    while (1) {
+      sleep_ms(SLEEP_LOOP_MS);
+    }
+  }
+  memcpy(img_tiles_data_ram, img_tiles_data_flash,
+         sizeof(img_tiles_data_flash));
+  memcpy(img_loserboy_data_ram, img_loserboy_data_flash,
+         sizeof(img_loserboy_data_flash));
+  memcpy(font6x8_data_ram, font6x8_data_flash, sizeof(font6x8_data_flash));
+  font6x8_ram = font6x8;
+  font6x8_ram.data = font6x8_data_ram;
+  font_set_font(&font6x8_ram);
   DPRINTF("Font set to 6x8\n");
   font_set_color(15);
   DPRINTF("Font color set to 15\n");
   init_sprites();
   DPRINTF("Sprites initialized\n");
+  for (int i = 0; i < count_of(bg_tile_ptrs); i++) {
+    bg_tile_ptrs[i] = &bg_tiles[bg_map[i]];
+  }
+  bg_framebuffer_bytes =
+      vga_screen.width / (8 / vga_screen.color_bits) * vga_screen.height;
+  bg_copy_bytes_full = bg_framebuffer_bytes;
+  size_t row_bytes = vga_screen.width / (8 / vga_screen.color_bits);
+  bg_copy_bytes_trim = bg_framebuffer_bytes - (row_bytes * 8u);
+  size_t bg_words = (bg_framebuffer_bytes + 3u) / 4u;
+  bg_framebuffer_ram = (unsigned int *)malloc(bg_words * sizeof(unsigned int));
+  if (bg_framebuffer_ram == NULL) {
+    DPRINTF("ERROR: failed to allocate RAM for background buffer\n");
+    while (1) {
+      sleep_ms(SLEEP_LOOP_MS);
+    }
+  }
+  unsigned int *saved_hidden = vga_screen.hidden_framebuffer;
+  vga_screen.hidden_framebuffer = bg_framebuffer_ram;
+  vga_clear_screen();
+  {
+    const int tile_w = img_tiles_width;
+    const int tile_h = img_tiles_height;
+    struct SPRITE **tile_ptr = bg_tile_ptrs;
+    for (int ty = 0; ty < 3; ty++) {
+      int y = ty * tile_h;
+      for (int tx = 0; tx < 5; tx++) {
+        struct SPRITE *tile = *tile_ptr++;
+        draw_tile(tile, tx * tile_w, y);
+      }
+    }
+    font_align(FONT_ALIGN_LEFT);
+    font_set_border(false, 8);
+    font_set_color(15);
+    font_move(0, 192);
+    font_printf(" Press any key to boot GEM. ");
+    font_printf("ESC to return to Booster.");
+  }
+  vga_screen.hidden_framebuffer = saved_hidden;
 
   // draw keyboard shortcuts
   font_align(FONT_ALIGN_LEFT);
@@ -347,6 +424,9 @@ void __not_in_flash_func(emul_start)() {
   // The main loop runs until the user decides to exit.
   // For testing purposes, this app only shows commands to manage the settings
   DPRINTF("Start the app loop here\n");
+  int font_align_state = FONT_ALIGN_LEFT;
+  font_set_border(true, 8);
+
   while (1) {
     sem_acquire_blocking(&draw_sem);
     if (startBooster) break;
@@ -357,33 +437,43 @@ void __not_in_flash_func(emul_start)() {
     }
 
     // draw background
-    for (int ty = 0; ty < 3; ty++) {
-      for (int tx = 0; tx < 5; tx++) {
-        struct SPRITE *tile = &bg_tiles[bg_map[ty * 5 + tx]];
-        draw_tile(tile, tx * tile->width, ty * tile->height);
-      }
-    }
+    size_t copy_bytes =
+        bg_full_copy_done ? bg_copy_bytes_trim : bg_copy_bytes_full;
+#if USE_DMA_BG_COPY
+    COPY_32BIT_DMA(vga_screen.hidden_framebuffer, bg_framebuffer_ram,
+                   copy_bytes);
+#else
+    memcpy(vga_screen.hidden_framebuffer, bg_framebuffer_ram, copy_bytes);
+#endif
+    bg_full_copy_done = true;
     // draw sprites
-    int msg_index = -1;
-    int msg_x, msg_y;
     for (int i = 0; i < sprite_count; i++) {
       struct CHARACTER *ch = &characters[i];
       draw_sprite(ch->sprite, ch->x, ch->y, true);
-      if (ch->message_index >= 0) {
-        msg_x = ch->x + ch->sprite->width / 2;
-        msg_y = ch->y - 10;
-        msg_index = ch->message_index;
-      }
     }
-    if (msg_index >= 0) {
-      font_align(FONT_ALIGN_CENTER);
-      font_move(msg_x, msg_y);
-      font_print(loserboy_messages[msg_index]);
+    if (active_talker >= sprite_count) {
+      active_talker = -1;
+    }
+    if (active_talker >= 0) {
+      struct CHARACTER *ch = &characters[active_talker];
+      if (ch->message_index >= 0) {
+        int msg_x = ch->x + ch->sprite->width / 2;
+        int msg_y = ch->y - 10;
+        int msg_index = ch->message_index;
+        if (font_align_state != FONT_ALIGN_CENTER) {
+          font_align(FONT_ALIGN_CENTER);
+          font_align_state = FONT_ALIGN_CENTER;
+        }
+        font_move(msg_x, msg_y);
+        font_print(loserboy_messages[msg_index]);
+      }
     }
 
     // draw fps counter
-    font_align(FONT_ALIGN_LEFT);
-    font_set_border(true, 8);
+    if (font_align_state != FONT_ALIGN_LEFT) {
+      font_align(FONT_ALIGN_LEFT);
+      font_align_state = FONT_ALIGN_LEFT;
+    }
     int fps = count_fps();
     font_move(0, 0);
     font_printf("%04d fps", fps);
@@ -396,10 +486,9 @@ void __not_in_flash_func(emul_start)() {
 
     vga_swap_framebuffers();
 
-    unsigned int cur_ms = to_ms_since_boot(get_absolute_time());
-    unsigned int end_ms = cur_ms;
-    if (cur_ms - last_sprite_increment > NEW_SPRITE_INTERVAL_MS) {
-      last_sprite_increment = cur_ms;
+    unsigned int end_ms = to_ms_since_boot(get_absolute_time());
+    if (end_ms - last_sprite_increment > NEW_SPRITE_INTERVAL_MS) {
+      last_sprite_increment = end_ms;
       // Only increment the number of sprites on screen if the frame duration is
       // in the VBLANK
       if (end_ms - start_ms < 19) {

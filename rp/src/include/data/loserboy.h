@@ -7,8 +7,7 @@
 #define img_loserboy_stride 13
 #define img_loserboy_num_spr 44
 
-const unsigned int img_loserboy_data[] __not_in_flash("img_loserboy_data")
-    __attribute__((aligned(8))) = {
+const unsigned int img_loserboy_data_flash[] __attribute__((aligned(8))) = {
         0xcccccccc, 0xcccccccc, 0xcccccccc, 0xcccccccc, 0xcccccccc, 0xcccccccc,
         0xcccccccc, 0xcccccccc, 0xcccccccc, 0xcccccccc, 0xcccccccc, 0xcccccccc,
         0xc0cccccc, 0xcccccccc, 0xcccccccc, 0xcccccccc, 0xcccccccc, 0xcccccccc,

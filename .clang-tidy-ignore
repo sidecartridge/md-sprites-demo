@@ -8,8 +8,6 @@
   reason: "Third-party code, not part of the project."
   justified: true
 
-# Ignore the fatfs-sdk directory
-- src: "fatfs-sdk/*"
   reason: "Third-party code, not part of the project."
   justified: true
 
