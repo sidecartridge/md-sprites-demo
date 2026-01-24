@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.0.3dev (2026-01-23) - release
+## v1.0.3beta (2026-01-23) - release
 - Bumped version and Atari ST firmware version.
 - Optimized sprite/tile rendering and main loop performance.
 - Moved sprite/tile/font assets to flash with RAM copies at runtime.
